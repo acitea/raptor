@@ -3,7 +3,6 @@ import pickle
 
 from .cluster_tree_builder import ClusterTreeBuilder, ClusterTreeConfig
 from .EmbeddingModels import BaseEmbeddingModel
-from .QAModels import BaseQAModel, GPT3TurboQAModel
 from .SummarizationModels import BaseSummarizationModel
 from .tree_builder import TreeBuilder, TreeBuilderConfig
 from .tree_retriever import TreeRetriever, TreeRetrieverConfig
@@ -52,9 +51,11 @@ class RetrievalAugmentationConfig:
                 f"tree_builder_type must be one of {list(supported_tree_builders.keys())}"
             )
 
-        # Validate qa_model
-        if qa_model is not None and not isinstance(qa_model, BaseQAModel):
-            raise ValueError("qa_model must be an instance of BaseQAModel")
+        # Validate qa_model (lazy import to avoid pulling in torch/transformers)
+        if qa_model is not None:
+            from .QAModels import BaseQAModel
+            if not isinstance(qa_model, BaseQAModel):
+                raise ValueError("qa_model must be an instance of BaseQAModel")
 
         if embedding_model is not None and not isinstance(
             embedding_model, BaseEmbeddingModel
@@ -129,7 +130,7 @@ class RetrievalAugmentationConfig:
         # Assign the created configurations to the instance
         self.tree_builder_config = tree_builder_config
         self.tree_retriever_config = tree_retriever_config
-        self.qa_model = qa_model or GPT3TurboQAModel()
+        self.qa_model = qa_model  # lazy: only loaded if answer_question() is called
         self.tree_builder_type = tree_builder_type
 
     def log_config(self):
@@ -290,6 +291,10 @@ class RetrievalAugmentation:
         context, layer_information = self.retrieve(
             question, start_layer, num_layers, top_k, max_tokens, collapse_tree, True
         )
+
+        if self.qa_model is None:
+            from .QAModels import GPT3TurboQAModel
+            self.qa_model = GPT3TurboQAModel()
 
         answer = self.qa_model.answer_question(context, question)
 
